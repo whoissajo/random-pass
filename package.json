@@ -1,0 +1,10 @@
+{
+  "name": "random-password-generator",
+  "version": "1.0.0",
+  "main": "api/pass.js",
+  "scripts": {
+    "dev": "vercel dev"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}
