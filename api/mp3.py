@@ -39,6 +39,7 @@ class handler(BaseHTTPRequestHandler):
             'writethumbnail': True,
             'outtmpl': os.path.join(output_dir, '%(id)s.%(ext)s'),
             'quiet': True,
+            'cookiefile': os.path.join(os.path.dirname(os.path.dirname(__file__)), 'cookies.txt')
             # 'noplaylist': True, # Optional: to ensure only single video
         }
 
