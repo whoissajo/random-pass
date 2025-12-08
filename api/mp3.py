@@ -3,6 +3,7 @@ from urllib.parse import parse_qs, urlparse
 import yt_dlp
 import os
 import shutil
+import imageio_ffmpeg
 
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -47,6 +48,7 @@ class handler(BaseHTTPRequestHandler):
             'writethumbnail': True,
             'outtmpl': os.path.join(output_dir, '%(id)s.%(ext)s'),
             'quiet': True,
+            'ffmpeg_location': imageio_ffmpeg.get_ffmpeg_exe(),
         }
         
         # Only add cookiefile if it exists in tmp (copied successfully)
