@@ -23,6 +23,14 @@ class handler(BaseHTTPRequestHandler):
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
 
+        # Handle cookies
+        # Vercel file system is read-only, so we copy cookies.txt to /tmp
+        original_cookies = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'cookies.txt')
+        tmp_cookies = os.path.join(output_dir, 'cookies.txt')
+        
+        if os.path.exists(original_cookies):
+            shutil.copy(original_cookies, tmp_cookies)
+
         # yt-dlp options
         ydl_opts = {
             'format': 'bestaudio/best',
@@ -39,9 +47,11 @@ class handler(BaseHTTPRequestHandler):
             'writethumbnail': True,
             'outtmpl': os.path.join(output_dir, '%(id)s.%(ext)s'),
             'quiet': True,
-            'cookiefile': os.path.join(os.path.dirname(os.path.dirname(__file__)), 'cookies.txt')
-            # 'noplaylist': True, # Optional: to ensure only single video
         }
+        
+        # Only add cookiefile if it exists in tmp (copied successfully)
+        if os.path.exists(tmp_cookies):
+            ydl_opts['cookiefile'] = tmp_cookies
 
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -75,7 +85,13 @@ class handler(BaseHTTPRequestHandler):
                     self.wfile.write(file_content)
 
                     # Cleanup
-                    os.remove(target_file)
+                    try:
+                        os.remove(target_file)
+                        if os.path.exists(tmp_cookies):
+                            os.remove(tmp_cookies)
+                    except:
+                        pass
+                    
                     # Also try to clean up thumbnail if it exists (it might be .jpg or .webp)
                     for file_name in os.listdir(output_dir):
                          if file_name.startswith(video_id):
