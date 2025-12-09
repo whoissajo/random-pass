@@ -37,14 +37,97 @@ export async function POST(request: Request) {
         const { title, description, thumbnail_url, video_url, genre, duration, year } = body
 
         const { data, error } = await supabase
-            .from('movies')
-            .insert([{ title, description, thumbnail_url, video_url, genre, duration, year }])
-            .select()
+        import { createClient } from '@supabase/supabase-js'
+        import { NextResponse } from 'next/server'
 
-        if (error) throw error
+        // Initialize Supabase client
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+        const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
 
-        return NextResponse.json(data)
-    } catch (error) {
-        return NextResponse.json({ error: 'Failed' }, { status: 500 })
-    }
-}
+        const supabase = createClient(supabaseUrl, supabaseKey)
+
+        export async function GET() {
+            try {
+                const { data: movies, error } = await supabase
+                    .from('movies')
+                    .select('*')
+                    .order('created_at', { ascending: false })
+
+                if (error) {
+                    console.error('Supabase Error:', error)
+                    throw error
+                }
+
+                return NextResponse.json(movies || [])
+            } catch (error) {
+                return NextResponse.json({ error: 'Failed' }, { status: 500 })
+            }
+        }
+
+        export async function POST(request: Request) {
+            const adminKey = request.headers.get('x-admin-key')
+            if (adminKey !== process.env.ADMIN_KEY) {
+                return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+            }
+
+            try {
+                const body = await request.json()
+                // Explicitly destructure to avoid saving arbitrary fields if any
+                const { title, description, thumbnail_url, video_url, genre, duration, year } = body
+
+                const { data, error } = await supabase
+                    .from('movies')
+                    .insert([{ title, description, thumbnail_url, video_url, genre, duration, year }])
+                    .select()
+
+                if (error) throw error
+
+                return NextResponse.json(data)
+            } catch (error) {
+                return NextResponse.json({ error: 'Failed' }, { status: 500 })
+            }
+        }
+
+        export async function DELETE(request: Request) {
+            const adminKey = request.headers.get('x-admin-key')
+            if (adminKey !== process.env.ADMIN_KEY) {
+                return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+            }
+
+            try {
+                const { searchParams } = new URL(request.url)
+                const id = searchParams.get('id')
+                if (!id) return NextResponse.json({ error: 'Missing ID' }, { status: 400 })
+
+                // 1. Get record to find R2 keys (if you want to implement deep cleanup)
+                const { data: movie } = await supabase.from('movies').select('*').eq('id', id).single()
+
+                // 2. Delete from DB
+                const { error } = await supabase.from('movies').delete().eq('id', id)
+                if (error) throw error
+
+                // 3. Cleanup R2 (Fire and forget, or await)
+                // We try to extract keys from URLs. 
+                // Format: https://domain/KEY
+                if (movie) {
+                    try {
+                        const { deleteFile } = await import('@/core/r2')
+
+                        if (movie.video_url && movie.video_url.includes('/')) {
+                            const videoKey = movie.video_url.split('/').pop()
+                            if (videoKey) await deleteFile(videoKey)
+                        }
+                        if (movie.thumbnail_url && movie.thumbnail_url.includes('/')) {
+                            const thumbKey = movie.thumbnail_url.split('/').pop()
+                            if (thumbKey) await deleteFile(thumbKey)
+                        }
+                    } catch (e) {
+                        console.error("R2 Cleanup Failed", e)
+                    }
+                }
+
+                return NextResponse.json({ success: true })
+            } catch (error) {
+                return NextResponse.json({ error: 'Failed' }, { status: 500 })
+            }
+        }

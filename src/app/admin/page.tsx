@@ -1,7 +1,8 @@
 "use client"
 
-import { useState, useRef } from 'react'
-import { Plus, Save, Loader2, UploadCloud, Film, Image as ImageIcon } from 'lucide-react'
+import { useState, useRef, useEffect } from 'react'
+import { Plus, Save, Loader2, UploadCloud, Film, Image as ImageIcon, Trash2 } from 'lucide-react'
+import { Movie } from '@/core/types'
 
 // Helper to interact with our API
 async function getPresignedUrl(filename: string, fileType: string, adminKey: string) {
@@ -15,6 +16,8 @@ async function getPresignedUrl(filename: string, fileType: string, adminKey: str
 }
 
 async function uploadToR2(url: string, file: File | Blob) {
+    // Use generic fetch, no special headers usually needed for presigned PUT unless signedSignedHeaders enforced
+    // If AWS SDK signed content-type, we must send it.
     await fetch(url, {
         method: 'PUT',
         body: file,
@@ -24,7 +27,10 @@ async function uploadToR2(url: string, file: File | Blob) {
 
 export default function AdminPage() {
     const [loading, setLoading] = useState(false)
+    const [deleteLoading, setDeleteLoading] = useState<string | null>(null)
     const [status, setStatus] = useState('')
+    const [movies, setMovies] = useState<Movie[]>([])
+
     const [formData, setFormData] = useState({
         title: '',
         description: '',
@@ -41,6 +47,34 @@ export default function AdminPage() {
     // Refs for auto-thumbnail generation
     const videoHiddenRef = useRef<HTMLVideoElement>(null)
     const canvasRef = useRef<HTMLCanvasElement>(null)
+
+    // Load Library
+    useEffect(() => {
+        fetch('/api/movies').then(res => res.json()).then(data => {
+            if (Array.isArray(data)) setMovies(data)
+        })
+    }, [loading, deleteLoading]) // Refresh when loading changes (add/delete)
+
+    const handleDelete = async (id: string) => {
+        if (!formData.admin_key) {
+            alert("Please enter Admin Key first")
+            return
+        }
+        if (!confirm("Are you sure? This will delete the movie and files.")) return
+
+        setDeleteLoading(id)
+        try {
+            const res = await fetch(`/api/movies?id=${id}`, {
+                method: 'DELETE',
+                headers: { 'x-admin-key': formData.admin_key }
+            })
+            if (!res.ok) throw new Error("Failed")
+        } catch (e) {
+            alert("Delete failed")
+        } finally {
+            setDeleteLoading(null)
+        }
+    }
 
     const handleVideoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
@@ -133,7 +167,7 @@ export default function AdminPage() {
             // clear form...
         } catch (error) {
             console.error(error)
-            alert(`Error: ${error}`)
+            alert(`Error: ${error} (Check Admin Key)`)
         } finally {
             setLoading(false)
         }
@@ -141,110 +175,146 @@ export default function AdminPage() {
 
     return (
         <div className="min-h-screen bg-black text-white p-8">
-            <div className="max-w-4xl mx-auto space-y-8">
-                <h1 className="text-3xl font-bold border-b border-gray-800 pb-4">
-                    Admin Studio
-                </h1>
+            <div className="max-w-4xl mx-auto space-y-12">
 
-                <form onSubmit={handleSubmit} className="space-y-8">
-                    <div className="bg-zinc-900/50 p-6 rounded-lg border border-zinc-800 space-y-4">
-                        <label className="text-sm font-medium text-red-500">Security</label>
-                        <input
-                            required
-                            type="password"
-                            className="w-full bg-black border border-zinc-700 rounded p-3 focus:border-red-500 outline-none"
-                            placeholder="Admin API Key"
-                            value={formData.admin_key}
-                            onChange={e => setFormData({ ...formData, admin_key: e.target.value })}
-                        />
+                {/* HEADER */}
+                <div className="flex items-center justify-between border-b border-gray-800 pb-4">
+                    <h1 className="text-3xl font-bold">Admin Studio</h1>
+                    <div className="text-sm text-gray-500">
+                        {movies.length} Movies in Library
                     </div>
+                </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                {/* SECURITY */}
+                <div className="bg-zinc-900/50 p-6 rounded-lg border border-zinc-800 space-y-2">
+                    <label className="text-sm font-medium text-red-500">Master Key</label>
+                    <input
+                        required
+                        type="password"
+                        className="w-full bg-black border border-zinc-700 rounded p-3 focus:border-red-500 outline-none"
+                        placeholder="Enter Admin API Key to Unlock Actions"
+                        value={formData.admin_key}
+                        onChange={e => setFormData({ ...formData, admin_key: e.target.value })}
+                    />
+                </div>
+
+                {/* UPLOAD FORM */}
+                <div className="space-y-8">
+                    <h2 className="text-xl font-semibold text-gray-400">Add New Movie</h2>
+                    <form onSubmit={handleSubmit} className="space-y-8">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                            <div className="space-y-4">
+                                <label className="block text-lg font-medium">1. Select Video</label>
+                                <div className="border-2 border-dashed border-zinc-700 rounded-xl p-8 flex flex-col items-center justify-center gap-4 hover:border-blue-500 transition-colors cursor-pointer relative h-48">
+                                    <input
+                                        type="file"
+                                        accept="video/*"
+                                        className="absolute inset-0 opacity-0 cursor-pointer"
+                                        onChange={handleVideoSelect}
+                                    />
+                                    <Film className="w-12 h-12 text-zinc-500" />
+                                    <p className="text-zinc-400 text-center text-sm truncate w-full px-4">
+                                        {videoFile ? videoFile.name : 'Click to Upload Video'}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="space-y-4">
+                                <label className="block text-lg font-medium">2. Computed Thumbnail</label>
+                                <div className="aspect-video bg-zinc-900 rounded-xl overflow-hidden border border-zinc-700 relative flex items-center justify-center h-48">
+                                    {thumbnailPreview ? (
+                                        <img src={thumbnailPreview} className="w-full h-full object-cover" />
+                                    ) : (
+                                        <div className="flex flex-col items-center gap-2 text-zinc-500">
+                                            <ImageIcon className="w-8 h-8" />
+                                            <span className="text-xs">Auto-generated</span>
+                                        </div>
+                                    )}
+                                </div>
+                                {/* Hidden Elements for Processing */}
+                                <video ref={videoHiddenRef} className="hidden" />
+                                <canvas ref={canvasRef} className="hidden" />
+                            </div>
+                        </div>
+
                         <div className="space-y-4">
-                            <label className="block text-lg font-medium">1. Select Video</label>
-                            <div className="border-2 border-dashed border-zinc-700 rounded-xl p-8 flex flex-col items-center justify-center gap-4 hover:border-blue-500 transition-colors cursor-pointer relative">
+                            <label className="block text-lg font-medium">3. Details</label>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <input
-                                    type="file"
-                                    accept="video/*"
-                                    className="absolute inset-0 opacity-0 cursor-pointer"
-                                    onChange={handleVideoSelect}
+                                    required
+                                    className="bg-zinc-900 border border-zinc-800 rounded p-3"
+                                    placeholder="Title"
+                                    value={formData.title}
+                                    onChange={e => setFormData({ ...formData, title: e.target.value })}
                                 />
-                                <Film className="w-12 h-12 text-zinc-500" />
-                                <p className="text-zinc-400">
-                                    {videoFile ? videoFile.name : 'Click to Upload Video (MP4/MKV)'}
-                                </p>
+                                <input
+                                    type="number"
+                                    className="bg-zinc-900 border border-zinc-800 rounded p-3"
+                                    placeholder="Year"
+                                    value={formData.year}
+                                    onChange={e => setFormData({ ...formData, year: parseInt(e.target.value) })}
+                                />
+                                <input
+                                    required
+                                    className="bg-zinc-900 border border-zinc-800 rounded p-3"
+                                    placeholder="Genre"
+                                    value={formData.genre}
+                                    onChange={e => setFormData({ ...formData, genre: e.target.value })}
+                                />
+                                <input
+                                    required
+                                    className="bg-zinc-900 border border-zinc-800 rounded p-3"
+                                    placeholder="Duration"
+                                    value={formData.duration}
+                                    onChange={e => setFormData({ ...formData, duration: e.target.value })}
+                                />
                             </div>
+                            <textarea
+                                required
+                                rows={3}
+                                className="w-full bg-zinc-900 border border-zinc-800 rounded p-3"
+                                placeholder="Description"
+                                value={formData.description}
+                                onChange={e => setFormData({ ...formData, description: e.target.value })}
+                            />
                         </div>
 
-                        <div className="space-y-4">
-                            <label className="block text-lg font-medium">2. Computed Thumbnail</label>
-                            <div className="aspect-video bg-zinc-900 rounded-xl overflow-hidden border border-zinc-700 relative flex items-center justify-center">
-                                {thumbnailPreview ? (
-                                    <img src={thumbnailPreview} className="w-full h-full object-cover" />
-                                ) : (
-                                    <div className="flex flex-col items-center gap-2 text-zinc-500">
-                                        <ImageIcon className="w-8 h-8" />
-                                        <span className="text-xs">Auto-generated from video</span>
-                                    </div>
-                                )}
+                        <button
+                            type="submit"
+                            disabled={loading}
+                            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            {loading ? <Loader2 className="animate-spin" /> : <UploadCloud className="w-6 h-6" />}
+                            {loading ? status : 'Upload to R2 & Publish'}
+                        </button>
+                    </form>
+                </div>
+
+                {/* MANAGE LIBRARY */}
+                <div className="space-y-6 pt-12 border-t border-gray-800">
+                    <h2 className="text-2xl font-bold text-gray-200">Manage Library</h2>
+                    <div className="grid grid-cols-1 gap-4">
+                        {movies.length === 0 && <p className="text-gray-500">No movies found.</p>}
+
+                        {movies.map(movie => (
+                            <div key={movie.id} className="flex items-center gap-4 bg-zinc-900/40 p-4 rounded-lg border border-zinc-800 hover:border-zinc-700 transition-colors">
+                                <img src={movie.thumbnail_url} className="w-24 h-16 object-cover rounded bg-zinc-800" />
+                                <div className="flex-1 min-w-0">
+                                    <h3 className="font-bold truncate">{movie.title}</h3>
+                                    <p className="text-sm text-gray-500">{movie.genre} • {movie.year}</p>
+                                </div>
+                                <button
+                                    onClick={() => handleDelete(movie.id)}
+                                    disabled={deleteLoading === movie.id}
+                                    className="p-3 text-red-500 hover:bg-red-500/10 rounded-full transition-colors disabled:opacity-50"
+                                >
+                                    {deleteLoading === movie.id ? <Loader2 className="animate-spin w-5 h-5" /> : <Trash2 className="w-5 h-5" />}
+                                </button>
                             </div>
-                            {/* Hidden Elements for Processing */}
-                            <video ref={videoHiddenRef} className="hidden" />
-                            <canvas ref={canvasRef} className="hidden" />
-                        </div>
+                        ))}
                     </div>
+                </div>
 
-                    <div className="space-y-4">
-                        <label className="block text-lg font-medium">3. Details</label>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <input
-                                required
-                                className="bg-zinc-900 border border-zinc-800 rounded p-3"
-                                placeholder="Title"
-                                value={formData.title}
-                                onChange={e => setFormData({ ...formData, title: e.target.value })}
-                            />
-                            <input
-                                type="number"
-                                className="bg-zinc-900 border border-zinc-800 rounded p-3"
-                                placeholder="Year"
-                                value={formData.year}
-                                onChange={e => setFormData({ ...formData, year: parseInt(e.target.value) })}
-                            />
-                            <input
-                                required
-                                className="bg-zinc-900 border border-zinc-800 rounded p-3"
-                                placeholder="Genre"
-                                value={formData.genre}
-                                onChange={e => setFormData({ ...formData, genre: e.target.value })}
-                            />
-                            <input
-                                required
-                                className="bg-zinc-900 border border-zinc-800 rounded p-3"
-                                placeholder="Duration"
-                                value={formData.duration}
-                                onChange={e => setFormData({ ...formData, duration: e.target.value })}
-                            />
-                        </div>
-                        <textarea
-                            required
-                            rows={3}
-                            className="w-full bg-zinc-900 border border-zinc-800 rounded p-3"
-                            placeholder="Description"
-                            value={formData.description}
-                            onChange={e => setFormData({ ...formData, description: e.target.value })}
-                        />
-                    </div>
-
-                    <button
-                        type="submit"
-                        disabled={loading}
-                        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                        {loading ? <Loader2 className="animate-spin" /> : <UploadCloud className="w-6 h-6" />}
-                        {loading ? status : 'Upload to R2 & Publish'}
-                    </button>
-                </form>
             </div>
         </div>
     )
