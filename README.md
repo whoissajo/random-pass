@@ -1,31 +1,36 @@
-# Random Password Generator
+# StreamApp - Netflix Clone
 
-A simple serverless function for Vercel that generates strong random passwords.
+A premium streaming application built with Next.js, Tailwind CSS, and Supabase.
 
-## Endpoint
+## Features
+- 🎥 **Netflix-like Interface**: Glassmorphism, smooth animations, and responsive design.
+- 📺 **Video Player**: Minimalist player (currently using sample video).
+- 🛠 **Admin Dashboard**: Add movies/videos via `/admin` (protected by key).
+- ☁ **Supabase & R2**: Designed for Supabase (DB) and R2 (Storage).
 
-- **GET /api/pass**: Returns a JSON object with a randomly generated strong password.
+## Setup & Deployment
 
-Example response:
-```json
-{
-  "password": "Ab3!Xy9@ZkLp"
-}
-```
+1.  **Environment Variables**:
+    Set these in Vercel or `.env.local`:
+    ```env
+    NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+    NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+    SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+    ADMIN_KEY=mysecretpassword
+    ```
 
-## Password Characteristics
+2.  **Database Setup**:
+    Run the SQL commands in `supabase_setup.sql` in your Supabase SQL Editor to create the `movies` table.
 
-- Length: 12 characters
-- Includes: Uppercase letters, lowercase letters, numbers, and symbols
-- Ensures at least one of each type
+3.  **Storage**:
+    Upload your videos to Cloudflare R2 or AWS S3. Get the public URL and paste it when adding a movie in the Admin panel.
 
-## Deployment to Vercel
-
-1. Install Vercel CLI: `npm i -g vercel`
-2. Login to Vercel: `vercel login`
-3. Deploy: `vercel`
-4. Access your domain at `https://your-domain.vercel.app/api/pass`
+4.  **Admin Access**:
+    Go to `/admin` to add new movies. Enter the `ADMIN_KEY` you set in the environment variables.
 
 ## Local Development
-
-Run `vercel dev` to test locally.
+```bash
+npm install
+npm run dev
+```
+Open [http://localhost:3000](http://localhost:3000).
