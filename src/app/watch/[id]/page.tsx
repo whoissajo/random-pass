@@ -1,16 +1,29 @@
-"use client"
-
 import { ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
-import { useParams } from 'next/navigation'
+import { createClient } from '@supabase/supabase-js'
+import { notFound } from 'next/navigation'
 
-export default function WatchPage() {
-    const params = useParams()
-    const id = params.id as string
+// Force dynamic behavior so it always fetches fresh data
+export const dynamic = 'force-dynamic'
 
-    // In a real app, fetch movie by ID here.
-    // For demo, we use a sample video.
-    const sampleVideoUrl = "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
+export default async function WatchPage({ params }: { params: { id: string } }) {
+    // 1. Initialize Supabase
+    const supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    )
+
+    // 2. Fetch Movie
+    const { data: movie } = await supabase
+        .from('movies')
+        .select('*')
+        .eq('id', params.id)
+        .single()
+
+    // 3. Handle 404
+    if (!movie) {
+        return notFound()
+    }
 
     return (
         <div className="w-screen h-screen bg-black overflow-hidden relative">
@@ -25,7 +38,8 @@ export default function WatchPage() {
                 className="w-full h-full object-contain focus:outline-none"
                 autoPlay
                 controls
-                src={sampleVideoUrl}
+                src={movie.video_url}
+                poster={movie.thumbnail_url}
             >
                 Your browser does not support the video tag.
             </video>
