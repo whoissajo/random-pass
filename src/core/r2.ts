@@ -16,6 +16,9 @@ export const r2 = new S3Client({
         accessKeyId: R2_ACCESS_KEY_ID,
         secretAccessKey: R2_SECRET_ACCESS_KEY,
     },
+    // CRITICAL: Disable fancy checksums that break R2 presigned URLs
+    requestChecksumCalculation: "WHEN_REQUIRED",
+    responseChecksumValidation: "WHEN_REQUIRED",
 })
 
 export async function getUploadUrl(filename: string, fileType: string) {
@@ -25,10 +28,18 @@ export async function getUploadUrl(filename: string, fileType: string) {
         Bucket: R2_BUCKET_NAME,
         Key: key,
         ContentType: fileType,
+        // Explicitly disable checksum algorithm if possible by not setting it
+        // The AWS SDK v3 sometimes defaults to adding it.
+        // Setting it to undefined might help force it off for the signature
+        ChecksumAlgorithm: undefined,
     })
 
     // URL valid for 1 hour
-    const uploadUrl = await getSignedUrl(r2, command, { expiresIn: 3600 })
+    const uploadUrl = await getSignedUrl(r2, command, {
+        expiresIn: 3600,
+        // Ensure no unexpected headers are signed
+        signableHeaders: new Set(['host', 'content-type']),
+    })
 
     // Public URL for accessing the file later
     // Custom Domain or R2dev URL
