@@ -1,0 +1,39 @@
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3'
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
+
+// Helper to handle potentially missing env vars during build
+const getEnv = (key: string) => process.env[key] || ''
+
+const R2_ACCOUNT_ID = getEnv('R2_ACCOUNT_ID')
+const R2_ACCESS_KEY_ID = getEnv('R2_ACCESS_KEY_ID')
+const R2_SECRET_ACCESS_KEY = getEnv('R2_SECRET_ACCESS_KEY')
+const R2_BUCKET_NAME = getEnv('R2_BUCKET_NAME')
+
+export const r2 = new S3Client({
+    region: 'auto',
+    endpoint: `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+    credentials: {
+        accessKeyId: R2_ACCESS_KEY_ID,
+        secretAccessKey: R2_SECRET_ACCESS_KEY,
+    },
+})
+
+export async function getUploadUrl(filename: string, fileType: string) {
+    const key = `${Date.now()}-${filename.replace(/\s/g, '-')}`
+
+    const command = new PutObjectCommand({
+        Bucket: R2_BUCKET_NAME,
+        Key: key,
+        ContentType: fileType,
+    })
+
+    // URL valid for 1 hour
+    const uploadUrl = await getSignedUrl(r2, command, { expiresIn: 3600 })
+
+    // Public URL for accessing the file later
+    // Custom Domain or R2dev URL
+    const publicDomain = process.env.R2_PUBLIC_DOMAIN || `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com/${R2_BUCKET_NAME}` // fallback
+    const publicUrl = `${publicDomain}/${key}`
+
+    return { uploadUrl, publicUrl, key }
+}
